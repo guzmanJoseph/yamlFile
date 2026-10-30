@@ -1,0 +1,187 @@
+openapi: 3.0.3
+info:
+  title: Movie Theater Seat Reservation API
+  version: 1.0.0
+  description: >-
+    This API lets a customer view seats for a specific movie showtime,
+    temporarily reserve available seats before checkout, and cancel a
+    reservation if they change their mind. A successful reservation holds
+    the selected seats for 10 minutes; the theater releases the seats after
+    the hold expires unless they are purchased. Authentication and actual
+    payment processing are outside the scope of this seat-reservation service.
+servers:
+  - url: https://api.example-theater.com/v1
+    description: Illustrative movie theater server (not a live endpoint)
+tags:
+  - name: Seat Reservations
+    description: Read seating availability and manage temporary holds.
+paths:
+  /showtimes/{showtimeId}/seats:
+    get:
+      tags: [Seat Reservations]
+      summary: List seat availability for a movie showtime
+      description: Returns each seat's identifier, row, number, and current availability.
+      parameters:
+        - name: showtimeId
+          in: path
+          required: true
+          description: Unique identifier of the movie showing.
+          schema:
+            type: string
+          example: st_2048
+      responses:
+        '200':
+          description: Seat map retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeatMap'
+        '404':
+          description: The requested showtime does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /reservations:
+    post:
+      tags: [Seat Reservations]
+      summary: Temporarily reserve seats for a showtime
+      description: >-
+        Creates a 10-minute seat hold. If any requested seat is unavailable,
+        no seats are reserved and the request returns a conflict.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReservationRequest'
+            example:
+              showtimeId: st_2048
+              seatIds: [A5, A6]
+              customerId: cust_105
+      responses:
+        '201':
+          description: Seat hold created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '400':
+          description: The request is missing fields or includes invalid seat IDs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: One or more seats are already held or sold.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /reservations/{reservationId}:
+    delete:
+      tags: [Seat Reservations]
+      summary: Cancel a temporary seat reservation
+      description: Releases seats held by an active reservation before purchase.
+      parameters:
+        - name: reservationId
+          in: path
+          required: true
+          description: Unique identifier of the seat reservation to cancel.
+          schema:
+            type: string
+          example: res_7812
+      responses:
+        '204':
+          description: Reservation canceled and seats released; no response body.
+        '404':
+          description: The specified reservation was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Reservation has already been purchased and cannot be canceled as a hold.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  schemas:
+    Seat:
+      type: object
+      required: [seatId, row, number, status]
+      properties:
+        seatId:
+          type: string
+          example: A5
+        row:
+          type: string
+          example: A
+        number:
+          type: integer
+          example: 5
+        status:
+          type: string
+          enum: [available, held, sold]
+    SeatMap:
+      type: object
+      required: [showtimeId, seats]
+      properties:
+        showtimeId:
+          type: string
+          example: st_2048
+        seats:
+          type: array
+          items:
+            $ref: '#/components/schemas/Seat'
+    CreateReservationRequest:
+      type: object
+      required: [showtimeId, seatIds, customerId]
+      properties:
+        showtimeId:
+          type: string
+          example: st_2048
+        seatIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+          example: [A5, A6]
+        customerId:
+          type: string
+          example: cust_105
+    Reservation:
+      type: object
+      required: [reservationId, showtimeId, seatIds, status, expiresAt]
+      properties:
+        reservationId:
+          type: string
+          example: res_7812
+        showtimeId:
+          type: string
+          example: st_2048
+        seatIds:
+          type: array
+          items:
+            type: string
+          example: [A5, A6]
+        status:
+          type: string
+          enum: [held]
+          example: held
+        expiresAt:
+          type: string
+          format: date-time
+          example: '2026-11-01T19:10:00Z'
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: SEAT_UNAVAILABLE
+        message:
+          type: string
+          example: Seat A5 is not available for this showtime.
